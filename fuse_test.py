@@ -12,6 +12,8 @@ from fuse import FUSE, FuseOSError, Operations
 class Passthrough(Operations):
     def __init__(self, root):
         self.root = root
+        self.fh_cache = {}
+        self.cache = {}
 
     # Helpers
     # =======
@@ -98,13 +100,36 @@ class Passthrough(Operations):
 
     def open(self, path, flags):
         full_path = self._full_path(path)
-        return os.open(full_path, flags)
+        fh = os.open(full_path, flags)
+        self.fh_cache[fh]=full_path
+#       print self.fh_cache
+        return fh
 
     def create(self, path, mode, fi=None):
         full_path = self._full_path(path)
         return os.open(full_path, os.O_WRONLY | os.O_CREAT, mode)
 
     def read(self, path, length, offset, fh):
+        if fh in self.fh_cache.keys():
+            full_path = self.fh_cache[fh]
+            if full_path in self.cache.keys():
+#                print self.cache[full_path]["binary"][offset:offset+length]
+#                print length
+                return self.cache[full_path]["binary"][offset:offset+length]
+            else:
+                st = os.stat(full_path)
+                fileDic = {}
+                fileDic["size"] = st.st_size
+                data=[]
+                with open(full_path) as f:
+                    for line in f:
+                        data.append(line)
+                "".join(data)
+
+
+                fileDic["binary"] = "".join(data)
+                self.cache[full_path] = fileDic
+#                print self.cache
         os.lseek(fh, offset, os.SEEK_SET)
         return os.read(fh, length)
 
